@@ -32,10 +32,3 @@ export function getAssetDiskPath(cfg: ApiConfig, assetPath: string) {
 export function getAssetURL(cfg: ApiConfig, assetPath: string) {
   return `http://localhost:${cfg.port}/assets/${assetPath}`;
 }
-
-export function getS3AssetURL(cfg: ApiConfig, assetPath: string) {
-  if (cfg.s3CfDistribution && cfg.s3CfDistribution !== "TEST") {
-    return `https://${cfg.s3CfDistribution}.cloudfront.net/${assetPath}`;
-  }
-  return `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${assetPath}`;
-}
