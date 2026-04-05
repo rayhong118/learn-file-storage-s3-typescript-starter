@@ -38,17 +38,20 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const mediaType = thumbnail.type;
 
   const imageData = await thumbnail.arrayBuffer();
-  const buffer = Buffer.from(imageData).toString("base64");
-  const dataURL = `data:${mediaType};base64,${buffer}`;
+  const fileExtension =
+    mediaType.split("/")[1]?.replace("jpeg", "jpg") || "bin";
+  const dataURL = `${cfg.assetsRoot}/${videoId}.${fileExtension}`;
+
+  Bun.write(dataURL, imageData);
 
   const videoMetadata = getVideo(cfg.db, videoId);
   if (videoMetadata?.userID !== userID) {
     throw new UserForbiddenError("");
   }
 
-  // const thumbnailURL = `http://localhost:${cfg.port}/api/thumbnails/${videoId}`;
+  const thumbnailURL = `http://localhost:${cfg.port}/assets/${videoId}.${fileExtension}`;
 
-  videoMetadata.thumbnailURL = dataURL;
+  videoMetadata.thumbnailURL = thumbnailURL;
 
   await updateVideo(cfg.db, videoMetadata);
 
