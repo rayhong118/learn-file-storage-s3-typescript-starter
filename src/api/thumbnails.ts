@@ -1,17 +1,10 @@
-import { type BunRequest } from "bun";
 import { getBearerToken, validateJWT } from "../auth";
-import type { ApiConfig } from "../config";
-import { getVideo, updateVideo } from "../db/videos";
-import { BadRequestError, UserForbiddenError } from "./errors";
+import { getAssetDiskPath, getAssetURL, getAssetPath } from "./assets";
 import { respondWithJSON } from "./json";
-
-type Thumbnail = {
-  data: ArrayBuffer;
-  mediaType: string;
-};
-
-// limit 20 MB
-const MAX_UPLOAD_SIZE = 20 << 20;
+import { getVideo, updateVideo } from "../db/videos";
+import type { ApiConfig } from "../config";
+import type { BunRequest } from "bun";
+import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -22,40 +15,40 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const token = getBearerToken(req.headers);
   const userID = validateJWT(token, cfg.jwtSecret);
 
-  console.log("uploading thumbnail for video", videoId, "by user", userID);
+  const video = getVideo(cfg.db, videoId);
+  if (!video) {
+    throw new NotFoundError("Couldn't find video");
+  }
+  if (video.userID !== userID) {
+    throw new UserForbiddenError("Not authorized to update this video");
+  }
 
   const formData = await req.formData();
-  const thumbnail = formData.get("thumbnail");
-
-  if (!(thumbnail instanceof File)) {
-    throw new BadRequestError("Invalid image file");
+  const file = formData.get("thumbnail");
+  if (!(file instanceof File)) {
+    throw new BadRequestError("Thumbnail file missing");
   }
 
-  if (thumbnail.size > MAX_UPLOAD_SIZE) {
-    throw new BadRequestError("Invalid file size");
+  const MAX_UPLOAD_SIZE = 10 << 20;
+
+  if (file.size > MAX_UPLOAD_SIZE) {
+    throw new BadRequestError(
+      `Thumbnail file exceeds the maximum allowed size of 10MB`,
+    );
   }
 
-  const mediaType = thumbnail.type;
-
-  const imageData = await thumbnail.arrayBuffer();
-  const fileExtension =
-    mediaType.split("/")[1]?.replace("jpeg", "jpg") || "bin";
-  const dataURL = `${cfg.assetsRoot}/${videoId}.${fileExtension}`;
-
-  Bun.write(dataURL, imageData);
-
-  const videoMetadata = getVideo(cfg.db, videoId);
-  if (videoMetadata?.userID !== userID) {
-    throw new UserForbiddenError("");
+  const mediaType = file.type;
+  if (mediaType !== "image/jpeg" && mediaType !== "image/png") {
+    throw new BadRequestError("Invalid file type. Only JPEG or PNG allowed.");
   }
 
-  const thumbnailURL = `http://localhost:${cfg.port}/assets/${videoId}.${fileExtension}`;
+  const assetPath = getAssetPath(mediaType);
+  const assetDiskPath = getAssetDiskPath(cfg, assetPath);
+  await Bun.write(assetDiskPath, file);
 
-  videoMetadata.thumbnailURL = thumbnailURL;
+  const urlPath = getAssetURL(cfg, assetPath);
+  video.thumbnailURL = urlPath;
+  updateVideo(cfg.db, video);
 
-  await updateVideo(cfg.db, videoMetadata);
-
-  const newVideoData = await getVideo(cfg.db, videoId);
-
-  return respondWithJSON(200, newVideoData);
+  return respondWithJSON(200, video);
 }
