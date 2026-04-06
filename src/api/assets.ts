@@ -29,6 +29,15 @@ export function getAssetDiskPath(cfg: ApiConfig, assetPath: string) {
   return path.join(cfg.assetsRoot, assetPath);
 }
 
-export function getAssetURL(cfg: ApiConfig, assetPath: string) {
-  return `http://localhost:${cfg.port}/assets/${assetPath}`;
+export function getAssetURL(cfg: ApiConfig, key: string) {
+  // If we have a valid CloudFront distribution, use it
+  if (cfg.s3CfDistribution && cfg.s3CfDistribution !== "TEST") {
+    const baseUrl = cfg.s3CfDistribution.endsWith("/")
+      ? cfg.s3CfDistribution
+      : `${cfg.s3CfDistribution}/`;
+    return `${baseUrl}${key}`;
+  }
+
+  // Fallback to standard S3 URL
+  return `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${key}`;
 }
